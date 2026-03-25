@@ -1,0 +1,47 @@
+#!/bin/bash
+set -e
+
+# Update system packages
+apt-get update -y
+    
+# Install podman
+apt-get install -y podman
+
+# Configure Prefect agent
+mkdir /root/.prefect
+
+# Create Prefect configuration
+pubip=$(curl http://checkip.amazonaws.com)
+cat > /root/.prefect/profiles.toml <<EOF
+active = "cloud"
+[profiles.local]
+PREFECT_API_URL = "http://127.0.0.1:${prefect_port}/api"
+PREFECT_SERVER_ANALYTICS_ENABLED = false
+[profiles.cloud]
+PREFECT_API_URL = "http://$pubip:${prefect_port}/api"
+PREFECT_SERVER_ANALYTICS_ENABLED = false
+EOF
+
+# Create a systemd service for Prefect agent (optional - for persistent agent)
+mkdir -p /etc/containers/systemd/
+cat > /etc/containers/systemd/prefect-server.container <<EOF
+[Unit]
+Description=Prefect server
+
+[Container]
+ContainerName=prefect-server
+Image=docker.io/prefecthq/prefect:3-latest
+PublishPort=${prefect_port}:${prefect_port}
+Volume=/root/.prefect:/root/.prefect
+Exec=prefect server start --host 0.0.0.0
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl start prefect-server
+
+timeout 60 bash -c "until curl -sf http://127.0.0.1:${prefect_port}/api/health >/dev/null; do sleep 5; done"
+
+podman exec prefect-server prefect -p local work-pool create main -t process

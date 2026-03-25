@@ -132,6 +132,46 @@ resource "aws_security_group" "in_prefect" {
   }
 }
 
+# Key Pair for SSH access
+resource "aws_key_pair" "user" {
+  key_name   = "${var.environment}-ssh-key"
+  public_key = file(pathexpand(var.ssh_public_key_path))
+}
+
+# Prefect primary interface
+resource "aws_network_interface" "prefect_server" {
+  subnet_id = aws_subnet.pub[0].id
+  security_groups = [
+    aws_security_group.out_all.id,
+    aws_security_group.in_ssh.id,
+    aws_security_group.prefect_cluster.id,
+    aws_security_group.in_prefect.id,
+  ]
+  tags = {
+    Name = "${var.environment}-prefect-server-eni"
+  }
+}
+
+# Prefect server
+resource "aws_instance" "prefect_server" {
+  ami           = data.aws_ami.ubuntu.id
+  instance_type = var.server_instance_type
+
+  key_name = aws_key_pair.user.key_name
+
+  primary_network_interface {
+    network_interface_id = aws_network_interface.prefect_server.id
+  }
+
+  user_data_base64 = base64encode(templatefile("${path.module}/user_data_server.sh.tftpl", {
+    prefect_port = var.prefect_port
+  }))
+
+  tags = {
+    Name = "${var.environment}-prefect-server"
+  }
+}
+
 # IAM Role for EC2 instances
 resource "aws_iam_role" "ec2_fleet" {
   name = "${var.environment}-ec2-fleet-role"
@@ -176,42 +216,6 @@ resource "aws_iam_instance_profile" "fleet_profile" {
   role = aws_iam_role.ec2_fleet.name
 }
 
-# Key Pair for SSH access
-resource "aws_key_pair" "user" {
-  key_name   = "${var.environment}-ssh-key"
-  public_key = file(pathexpand(var.ssh_public_key_path))
-}
-
-# Prefect primary interface
-resource "aws_network_interface" "prefect_server" {
-  subnet_id = aws_subnet.pub[0].id
-  security_groups = [
-    aws_security_group.out_all.id,
-    aws_security_group.in_ssh.id,
-    aws_security_group.prefect_cluster.id,
-    aws_security_group.in_prefect.id,
-  ]
-  tags = {
-    Name = "${var.environment}-prefect-server-eni"
-  }
-}
-
-# Prefect server
-resource "aws_instance" "prefect_server" {
-  ami           = data.aws_ami.ubuntu.id
-  instance_type = var.server_instance_type
-
-  key_name = aws_key_pair.user.key_name
-
-  primary_network_interface {
-    network_interface_id = aws_network_interface.prefect_server.id
-  }
-
-  tags = {
-    Name = "${var.environment}-prefect-server"
-  }
-}
-
 # EC2 Launch Template
 resource "aws_launch_template" "prefect_worker" {
   name_prefix = "${var.environment}-prefect-worker-"
@@ -237,6 +241,11 @@ resource "aws_launch_template" "prefect_worker" {
     ]
     delete_on_termination = true
   }
+
+  user_data = base64encode(templatefile("${path.module}/user_data_worker.sh.tftpl", {
+    prefect_api_url = aws_instance.prefect_server.public_ip,
+    prefect_port    = var.prefect_port
+  }))
 
   tag_specifications {
     resource_type = "instance"
