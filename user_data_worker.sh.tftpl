@@ -18,8 +18,7 @@ PREFECT_API_URL = "http://${prefect_api_url}:${prefect_port}/api"
 DO_NOT_TRACK = 1
 EOF
 
-# Create a systemd service for Prefect agent (optional - for persistent agent)
-mkdir -p /etc/containers/systemd/
+# Create a systemd service for Prefect agent
 cat > /etc/containers/systemd/prefect-worker.container <<EOF
 [Unit]
 Description=Prefect worker
@@ -34,6 +33,7 @@ Exec=prefect worker start -p main
 WantedBy=multi-user.target
 EOF
 
+# Wait for Prefect server to be healthy before starting the worker
 timeout 60 bash -c "until curl -sf http://${prefect_api_url}:${prefect_port}/api/health >/dev/null; do sleep 5; done"
 
 systemctl daemon-reload
