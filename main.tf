@@ -243,7 +243,7 @@ resource "aws_launch_template" "prefect_worker" {
   }
 
   user_data = base64encode(templatefile("${path.module}/user_data_worker.sh.tftpl", {
-    prefect_api_url = aws_instance.prefect_server.public_ip,
+    prefect_api_url = aws_instance.prefect_server.private_ip,
     prefect_port    = var.prefect_port
   }))
 
