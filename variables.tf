@@ -7,7 +7,7 @@ variable "aws_region" {
 variable "environment" {
   description = "Environment name"
   type        = string
-  default     = "prefect-on-the-spot-test"
+  default     = "prefect-on-the-spot"
 }
 
 variable "ssh_public_key_path" {
@@ -43,7 +43,7 @@ variable "spot_price_ratio" {
 variable "allowed_client_cidr" {
   description = "CIDR blocks allowed for client access"
   type        = list(string)
-  default     = ["0.0.0.0/0"]
+  default     = ["0.0.0.0/0"]   # Change your ip
 }
 
 variable "target_capacity" {
